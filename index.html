@@ -970,6 +970,55 @@
     font-weight: 500;
   }
 
+
+  .clickable-alert { cursor: pointer; }
+  .clickable-alert:hover .alert-name { color: var(--blue); text-decoration: underline; }
+
+  .team-color-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .team-color-card {
+    background: var(--bg-grouped2);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .team-color-left { display:flex; align-items:center; gap:10px; }
+  .team-color-dot { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 4px var(--separator-soft); }
+  .team-color-name { font-weight:700; font-size:14px; }
+  .team-color-input { width: 44px; height: 34px; border:0; background:transparent; cursor:pointer; }
+
+  .pauta-toolbar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .pauta-pill {
+    border: 1px solid var(--separator-soft);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border-radius: 100px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .pauta-pill.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .pauta-card.featured { box-shadow: 0 0 0 2px var(--blue)66, var(--shadow-md); }
+  .pauta-kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin: 12px 0; }
+  .pauta-kpi { background: var(--bg-grouped2); border-radius:12px; padding:10px 12px; }
+  .pauta-kpi-label { font-size:11px; color:var(--text-secondary); font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+  .pauta-kpi-value { margin-top:3px; font-size:18px; font-weight:800; font-variant-numeric: tabular-nums; }
+  .pauta-section-label { font-size:11px; color:var(--text-secondary); font-weight:800; text-transform:uppercase; letter-spacing:.4px; margin: 12px 0 8px; }
+
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--text-quaternary); border-radius: 5px; border: 2px solid var(--bg); }
@@ -1029,12 +1078,57 @@ const USERS = {
   'astra':   { pass: 'astra123',  role: 'supervisor', name: 'Sup. Astra',       canal: 'Astra' },
 };
 
+function hexToRgba(hex, alpha = 0.16) {
+  if (!hex || !hex.startsWith('#')) return hex + '20';
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function canalCSS(canal) {
-  return {
-    Falco:   { color: 'var(--falco)',   bg: 'var(--falco)20' },
-    Phoenix: { color: 'var(--phoenix)', bg: 'var(--phoenix)20' },
-    Astra:   { color: 'var(--astra)',   bg: 'var(--astra)20' },
+  const fallback = {
+    Falco:   'var(--falco)',
+    Phoenix: 'var(--phoenix)',
+    Astra:   'var(--astra)',
   }[canal];
+  const color = state?.teamColors?.[canal] || fallback;
+  return { color, bg: color.startsWith('#') ? hexToRgba(color, 0.16) : color + '20' };
+}
+
+function saveTeamColors() { localStorage.setItem('prota_team_colors', JSON.stringify(state.teamColors)); }
+function setTeamColor(canal, value) {
+  state.teamColors[canal] = value;
+  saveTeamColors();
+  renderTab(state.activeTab);
+  showSaved();
+}
+function resetTeamColors() {
+  state.teamColors = {};
+  saveTeamColors();
+  renderTab(state.activeTab);
+  showSaved();
+}
+
+function renderTeamColorSystem() {
+  if (state.currentUser.role !== 'admin') return '';
+  const defaults = { Falco: '#ff9500', Phoenix: '#af52de', Astra: '#32ade6' };
+  let html = `<div class="card">
+    <div class="chart-card-title">Cores dos times</div>
+    <div class="chart-card-sub">Altere as cores dos canais em todo o sistema.</div>
+    <div class="team-color-grid">`;
+  ['Falco','Phoenix','Astra'].forEach(canal => {
+    const value = state.teamColors[canal] || defaults[canal];
+    html += `<div class="team-color-card">
+      <div class="team-color-left">
+        <div class="team-color-dot" style="background:${value};"></div>
+        <div class="team-color-name">${canal}</div>
+      </div>
+      <input class="team-color-input" type="color" value="${value}" onchange="setTeamColor('${canal}', this.value)">
+    </div>`;
+  });
+  html += `</div><button class="btn-cancel" style="max-width:180px;" onclick="resetTeamColors()">Restaurar cores</button></div>`;
+  return html;
 }
 
 const CRITERIOS = [
@@ -1053,6 +1147,9 @@ let state = {
   selectedWeek: null,
   selectedQuarter: null, // {year, quarter}
   difficultyFilter: 'all', // all | Falco | Phoenix | Astra
+  teamColors: JSON.parse(localStorage.getItem('prota_team_colors') || '{}'),
+  focusPautaEditorId: null,
+  pautaFilter: 'all',
   theme: localStorage.getItem('prota_theme') || 'dark',
 };
 
@@ -1278,7 +1375,7 @@ function initApp() {
 
   const tabs = u.role === 'admin'
     ? ['Dashboard', 'Dificuldades', 'Pautas 1:1', 'Editores', 'Histórico']
-    : ['Lançar Notas', 'Editores'];
+    : ['Lançar Notas', 'Dificuldades', 'Editores'];
 
   const navEl = document.getElementById('nav-tabs');
   navEl.innerHTML = '';
@@ -1329,6 +1426,8 @@ function renderEditores(el) {
     <div class="section-title">Editores</div>
     <div class="section-sub">Cadastro e gestão por canal</div>
   </div></div>`;
+
+  html += renderTeamColorSystem();
 
   canaisVisiveis.forEach(canal => {
     const c = canalCSS(canal);
@@ -1619,6 +1718,18 @@ function selectQuarter(year, quarter) {
   renderTab(state.activeTab);
 }
 
+
+function calcViewsInQuarter(editorId, q) {
+  const weeks = getWeeksInQuarter(q);
+  let total = 0;
+  weeks.forEach(w => {
+    const v = state.notas[`${w}|${editorId}|views24`];
+    const n = parseViewsInput(v || '');
+    if (n !== null) total += n;
+  });
+  return total;
+}
+
 // ─── DASHBOARD ────────────────────────────────────────────────
 
 function renderDashboard(el) {
@@ -1650,6 +1761,12 @@ function renderDashboard(el) {
   });
   emAlerta.sort((a,b) => a.avg - b.avg);
   emDestaque.sort((a,b) => b.avg - a.avg);
+
+  const topViews = todos
+    .map(ed => ({ ...ed, totalViews: calcViewsInQuarter(ed.id, q) }))
+    .filter(ed => ed.totalViews > 0)
+    .sort((a,b) => b.totalViews - a.totalViews)
+    .slice(0, 5);
 
   let html = `<div class="section-header">
     <div class="section-header-left">
@@ -1715,7 +1832,7 @@ function renderDashboard(el) {
     html += `<div class="alert-list">`;
     emAlerta.forEach(ed => {
       const cc = canalCSS(ed.canal);
-      html += `<div class="alert-row">
+      html += `<div class="alert-row clickable-alert" onclick="openPautaFromAlert('${ed.id}')" title="Abrir pauta 1:1 de ${ed.name}">
         <div class="editor-avatar" style="width:30px;height:30px;font-size:11px;background:${cc.color};">${avatarFor(ed.name)}</div>
         <div class="alert-name">${ed.name}</div>
         <div class="alert-canal" style="background:${cc.bg};color:${cc.color};">${ed.canal}</div>
@@ -1725,6 +1842,27 @@ function renderDashboard(el) {
     html += `</div>`;
   }
   html += `</div></div>`;
+
+  html += `<div class="chart-card">
+    <div class="chart-card-title">Top editores por views</div>
+    <div class="chart-card-sub">Soma de Views 24h no trimestre</div>`;
+  if (topViews.length === 0) {
+    html += `<div class="empty-state" style="padding:20px;">Sem dados de views no trimestre.</div>`;
+  } else {
+    html += `<div class="alert-list">`;
+    topViews.forEach((ed, i) => {
+      const cc = canalCSS(ed.canal);
+      html += `<div class="alert-row">
+        <div style="font-size:13px;color:var(--text-tertiary);font-weight:800;width:22px;">#${i+1}</div>
+        <div class="editor-avatar" style="width:30px;height:30px;font-size:11px;background:${cc.color};">${avatarFor(ed.name)}</div>
+        <div class="alert-name">${ed.name}</div>
+        <div class="alert-canal" style="background:${cc.bg};color:${cc.color};">${ed.canal}</div>
+        <div class="alert-score" style="color:var(--green);min-width:86px;">${formatViews(ed.totalViews)}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
 
   html += `<div class="chart-card">
     <div class="chart-card-title">Heatmap · Editor x Semana</div>
@@ -1763,11 +1901,7 @@ function buildChartCanais(q) {
       labels: ['Falco', 'Phoenix', 'Astra'],
       datasets: [{
         data,
-        backgroundColor: [
-          styles.getPropertyValue('--falco').trim(),
-          styles.getPropertyValue('--phoenix').trim(),
-          styles.getPropertyValue('--astra').trim(),
-        ],
+        backgroundColor: ['Falco','Phoenix','Astra'].map(c => canalCSS(c).color),
         borderRadius: 8,
         barThickness: 40,
       }]
@@ -1802,8 +1936,8 @@ function buildChartEvolution(q) {
     return {
       label: canal,
       data,
-      borderColor: styles.getPropertyValue(`--${canal.toLowerCase()}`).trim(),
-      backgroundColor: styles.getPropertyValue(`--${canal.toLowerCase()}`).trim() + '20',
+      borderColor: canalCSS(canal).color,
+      backgroundColor: canalCSS(canal).bg,
       tension: 0.35,
       borderWidth: 2.5,
       pointRadius: 3,
@@ -1919,7 +2053,7 @@ function buildHeatmap(q) {
 
 function renderDificuldades(el) {
   const q = state.selectedQuarter;
-  const filter = state.difficultyFilter;
+  let filter = state.currentUser.role === 'supervisor' ? state.currentUser.canal : state.difficultyFilter;
 
   let html = `<div class="section-header">
     <div class="section-header-left">
@@ -1929,12 +2063,7 @@ function renderDificuldades(el) {
     ${renderQuarterSelector()}
   </div>
 
-  <div class="filter-tabs">
-    <button class="filter-tab ${filter === 'all' ? 'active' : ''}" onclick="setDiffFilter('all')">Todos os canais</button>
-    <button class="filter-tab ${filter === 'Falco' ? 'active' : ''}" onclick="setDiffFilter('Falco')" style="${filter==='Falco'?'background:var(--falco);border-color:var(--falco);':''}">Falco</button>
-    <button class="filter-tab ${filter === 'Phoenix' ? 'active' : ''}" onclick="setDiffFilter('Phoenix')" style="${filter==='Phoenix'?'background:var(--phoenix);border-color:var(--phoenix);':''}">Phoenix</button>
-    <button class="filter-tab ${filter === 'Astra' ? 'active' : ''}" onclick="setDiffFilter('Astra')" style="${filter==='Astra'?'background:var(--astra);border-color:var(--astra);':''}">Astra</button>
-  </div>`;
+  ${renderDiffFilters(filter)}`;
 
   // BLOCO 1: Time inteiro (ou canal filtrado) — onde mais erra
   const critScores = CRITERIOS.map(cr => ({
@@ -2059,6 +2188,21 @@ function renderDificuldades(el) {
   el.innerHTML = html;
 }
 
+
+function renderDiffFilters(filter) {
+  if (state.currentUser.role === 'supervisor') {
+    const cc = canalCSS(state.currentUser.canal);
+    return `<div class="filter-tabs"><button class="filter-tab active" style="background:${cc.color};border-color:${cc.color};">Canal ${state.currentUser.canal}</button></div>`;
+  }
+  let html = `<div class="filter-tabs"><button class="filter-tab ${filter === 'all' ? 'active' : ''}" onclick="setDiffFilter('all')">Todos os canais</button>`;
+  ['Falco','Phoenix','Astra'].forEach(canal => {
+    const cc = canalCSS(canal);
+    html += `<button class="filter-tab ${filter === canal ? 'active' : ''}" onclick="setDiffFilter('${canal}')" style="${filter===canal?`background:${cc.color};border-color:${cc.color};`:''}">${canal}</button>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
 function setDiffFilter(filter) {
   state.difficultyFilter = filter;
   renderTab(state.activeTab);
@@ -2084,15 +2228,28 @@ function renderPautas(el) {
     return;
   }
 
-  ['Falco', 'Phoenix', 'Astra'].forEach(canal => {
-    const eds = editoresComNota.filter(e => e.canal === canal);
+  const focused = state.focusPautaEditorId ? state.editors.find(e => e.id === state.focusPautaEditorId) : null;
+  html += `<div class="pauta-toolbar">
+    <button class="pauta-pill ${state.pautaFilter === 'all' && !focused ? 'active' : ''}" onclick="clearPautaFocus(); setPautaFilter('all')">Todas</button>
+    ${['Falco','Phoenix','Astra'].map(canal => {
+      const cc = canalCSS(canal);
+      return `<button class="pauta-pill ${state.pautaFilter === canal && !focused ? 'active' : ''}" onclick="clearPautaFocus(); setPautaFilter('${canal}')" style="${state.pautaFilter===canal && !focused ? `background:${cc.color};border-color:${cc.color};` : ''}">${canal}</button>`;
+    }).join('')}
+    ${focused ? `<button class="pauta-pill active" onclick="clearPautaFocus()">Foco: ${focused.name} ✕</button>` : ''}
+  </div>`;
+
+  const canais = focused ? [focused.canal] : (state.pautaFilter === 'all' ? ['Falco','Phoenix','Astra'] : [state.pautaFilter]);
+
+  canais.forEach(canal => {
+    let eds = editoresComNota.filter(e => e.canal === canal);
+    if (focused) eds = eds.filter(e => e.id === focused.id);
     if (eds.length === 0) return;
     const cc = canalCSS(canal);
 
     html += `<div class="canal-section-header">
       <div class="canal-dot" style="background:${cc.color};"></div>
       <div class="canal-section-title" style="color:${cc.color};">Canal ${canal}</div>
-      <div class="canal-section-count">${eds.length} editor${eds.length !== 1 ? 'es' : ''}</div>
+      <div class="canal-section-count">${eds.length} pauta${eds.length !== 1 ? 's' : ''}</div>
     </div>`;
 
     eds.forEach(ed => {
@@ -2108,8 +2265,11 @@ function renderPautas(el) {
 
       const pauta = gerarPauta(ed, notas, avg, obs, views, wt);
       const avgColor = colorByScore(avg);
+      const lowest = CRITERIOS.map(cr => ({...cr, score:notas[cr.key]})).filter(x => x.score).sort((a,b)=>a.score-b.score)[0];
+      const strongest = CRITERIOS.map(cr => ({...cr, score:notas[cr.key]})).filter(x => x.score).sort((a,b)=>b.score-a.score)[0];
+      const featuredClass = focused && focused.id === ed.id ? ' featured' : '';
 
-      html += `<div class="pauta-card">
+      html += `<div class="pauta-card${featuredClass}" id="pauta-${ed.id}">
         <div class="pauta-side" style="background:${cc.color};"></div>
         <div class="pauta-header">
           <div class="editor-avatar" style="background:${cc.color};">${avatarFor(ed.name)}</div>
@@ -2119,6 +2279,13 @@ function renderPautas(el) {
           </div>
           <div class="pauta-score" style="color:${avgColor};">${avg.toFixed(1)}</div>
         </div>
+        <div class="pauta-kpis">
+          <div class="pauta-kpi"><div class="pauta-kpi-label">Views 24h</div><div class="pauta-kpi-value">${views || '–'}</div></div>
+          <div class="pauta-kpi"><div class="pauta-kpi-label">Watchtime</div><div class="pauta-kpi-value">${wt || '–'}</div></div>
+          <div class="pauta-kpi"><div class="pauta-kpi-label">Maior dificuldade</div><div class="pauta-kpi-value" style="color:${lowest ? colorByScore(lowest.score) : 'var(--text-tertiary)'};font-size:15px;">${lowest ? lowest.short : '–'}</div></div>
+          <div class="pauta-kpi"><div class="pauta-kpi-label">Ponto forte</div><div class="pauta-kpi-value" style="color:${strongest ? colorByScore(strongest.score) : 'var(--text-tertiary)'};font-size:15px;">${strongest ? strongest.short : '–'}</div></div>
+        </div>
+        <div class="pauta-section-label">Plano da conversa</div>
         <div class="pauta-list">
           ${pauta.map((p, i) => `<div class="pauta-item"><div class="pauta-num">${String(i+1).padStart(2,'0')}</div><div>${p}</div></div>`).join('')}
         </div>
@@ -2127,7 +2294,24 @@ function renderPautas(el) {
   });
 
   el.innerHTML = html;
+
+  if (state.focusPautaEditorId) {
+    setTimeout(() => document.getElementById(`pauta-${state.focusPautaEditorId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+  }
 }
+
+function openPautaFromAlert(editorId) {
+  state.focusPautaEditorId = editorId;
+  state.pautaFilter = 'all';
+  document.querySelectorAll('.nav-tab').forEach(x => x.classList.remove('active'));
+  const tabs = [...document.querySelectorAll('.nav-tab')];
+  const btn = tabs.find(x => x.textContent === 'Pautas 1:1');
+  if (btn) btn.classList.add('active');
+  state.activeTab = 'Pautas 1:1';
+  renderTab('Pautas 1:1');
+}
+function clearPautaFocus() { state.focusPautaEditorId = null; renderTab(state.activeTab); }
+function setPautaFilter(filter) { state.pautaFilter = filter; renderTab(state.activeTab); }
 
 function gerarPauta(ed, notas, avg, obs, views, wt) {
   const pauta = [];
